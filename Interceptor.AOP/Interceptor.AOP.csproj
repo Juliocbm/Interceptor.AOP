@@ -5,7 +5,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<PackageId>Interceptor.AOP</PackageId>
-		<Version>1.1.0</Version>
+		<Version>1.1.2</Version>
 		<Authors>Julio Cesar Bautista Monsalvo</Authors>
 		<Company>JCBM</Company>
 		<Description>Librería para interceptar métodos con soporte para reintentos, validaciones y medición de tiempo.</Description>
@@ -31,10 +31,15 @@
 
 	<ItemGroup>
 		<None Include="../CHANGELOG.md" Pack="true" PackagePath="" />
+		<None Include="..\..\..\..\Users\desarrollo2\OneDrive - H G Transportaciones SA De CV\Documentos\Documentacion\Recursos graficos\Iconos\icons8_service_64.png">
+		  <Pack>True</Pack>
+		  <PackagePath>\</PackagePath>
+		</None>
 	</ItemGroup>
 
 	<PropertyGroup>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageIcon>icons8_service_64.png</PackageIcon>
 	</PropertyGroup>
 
 </Project>
