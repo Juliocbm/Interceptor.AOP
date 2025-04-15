@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<PackageId>Interceptor.AOP</PackageId>
+		<Version>1.0.0</Version>
+		<Authors>Julio Cesar Bautista Monsalvo</Authors>
+		<Company>JCBM</Company>
+		<Description>Librería AOP para interceptar y manejar excepciones automáticamente en .NET</Description>
+		<PackageTags>aop;exceptions;interceptor;logging</PackageTags>
+		<RepositoryUrl>https://github.com/TuUsuario/ArchivadorGeneral.AOP</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/TuUsuario/ArchivadorGeneral.AOP</PackageProjectUrl>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+		<!-- Para permitir publicación pública -->
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.4" />
+	</ItemGroup>
+
+</Project>
