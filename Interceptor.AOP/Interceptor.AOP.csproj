@@ -10,8 +10,8 @@
 		<Company>JCBM</Company>
 		<Description>Librería AOP para interceptar y manejar excepciones automáticamente en .NET</Description>
 		<PackageTags>aop;exceptions;interceptor;logging</PackageTags>
-		<RepositoryUrl>https://github.com/TuUsuario/ArchivadorGeneral.AOP</RepositoryUrl>
-		<PackageProjectUrl>https://github.com/TuUsuario/ArchivadorGeneral.AOP</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/Juliocbm/Interceptor.AOP</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/Juliocbm/Interceptor.AOP</PackageProjectUrl>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 
 		<!-- Para permitir publicación pública -->
