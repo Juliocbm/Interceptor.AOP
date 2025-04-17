@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Polly;
 using Interceptor.AOP.Attributes;
 using Interceptor.AOP.Configuration;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Interceptor.AOP.Interceptors
 {
@@ -13,16 +14,18 @@ namespace Interceptor.AOP.Interceptors
         private T _decorated;
         private ILogger _logger;
         private InterceptorOptions _options;
+        private IMemoryCache _memoryCache;
 
-        public void Configure(T decorated, ILogger logger, InterceptorOptions options)
+        public void Configure(T decorated, ILogger logger, InterceptorOptions options, IMemoryCache memoryCache)
         {
             _decorated = decorated;
             _logger = logger;
             _options = options ?? new InterceptorOptions();
+            _memoryCache = memoryCache;
         }
 
         protected override object Invoke(MethodInfo method, object[] args)
-        {
+        {    
             var returnType = method.ReturnType;
             var isAsync = typeof(Task).IsAssignableFrom(returnType);
             var contexto = method.GetCustomAttribute<HandleExceptionAttribute>()?.Contexto ?? method.Name;
@@ -30,6 +33,140 @@ namespace Interceptor.AOP.Interceptors
             return isAsync
                 ? HandleAsync(method, args, contexto)
                 : HandleSync(method, args, contexto);
+        }
+
+
+        private async Task InvokeTaskMethodAsync(MethodInfo method, object[] args, string contexto)
+        {
+            try
+            {
+                ApplyValidation(method, args);
+                LogAuditInput(method, args); // 📥 Entrada
+
+                var sw = StartTimerIfNeeded(method);
+
+                var policy = CreateAsyncPolicy(method);
+                var fallbackAttr = method.GetCustomAttribute<FallbackAttribute>();
+
+                if (fallbackAttr != null)
+                {
+                    var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
+                    var fallbackPolicy = policy.WrapAsync(
+                        Policy.Handle<Exception>()
+                              .FallbackAsync(async ct =>
+                              {
+                                  var fallbackResult = fallbackMethod.Invoke(_decorated, args);
+                                  if (fallbackResult is Task fallbackTask)
+                                      await fallbackTask.ConfigureAwait(false);
+                                  LogAuditOutput(method, "<fallback void>"); // 📤 Salida desde fallback
+                              })
+                    );
+
+                    await fallbackPolicy.ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
+                }
+                else
+                {
+                    await policy.ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
+                    LogAuditOutput(method, "<void>"); // 📤 Salida normal
+                }
+
+                StopTimerAndLogIfNeeded(method, sw);
+            }
+            catch (Exception ex)
+            {
+                LogAuditError(method, ex); // ⚠️ Error
+                _logger.LogError(ex, "❌ Error en método async: {Method} - Contexto: {Contexto}", method.Name, contexto);
+                throw;
+            }
+        }
+
+        private object InvokeGenericTaskMethodAsync(MethodInfo method, object[] args, string contexto)
+        {
+            try
+            {
+                ApplyValidation(method, args);
+                LogAuditInput(method, args); // 📥 Entrada
+
+                var sw = StartTimerIfNeeded(method);
+
+                var cacheAttr = method.GetCustomAttribute<CacheAttribute>();
+                var fallbackAttr = method.GetCustomAttribute<FallbackAttribute>();
+                var cacheKey = cacheAttr != null ? GenerateCacheKey(method, args) : null;
+
+                if (cacheAttr != null && _memoryCache.TryGetValue(cacheKey, out var cached))
+                {
+                    _logger.LogInformation("🔁 Cache HIT async<T> en {Method}", method.Name);
+                    LogAuditOutput(method, cached); // 📤 Salida por cache
+                    return Task.FromResult(cached);
+                }
+
+                var func = new Func<Task<object>>(async () =>
+                {
+                    var task = (Task)method.Invoke(_decorated, args);
+                    await task.ConfigureAwait(false);
+
+                    var resultProperty = task.GetType().GetProperty("Result");
+                    var result = resultProperty?.GetValue(task);
+
+                    if (cacheAttr != null)
+                        _memoryCache.Set(cacheKey, result, TimeSpan.FromSeconds(cacheAttr.DurationSeconds));
+
+                    LogAuditOutput(method, result); // 📤 Salida exitosa
+
+                    return result;
+                });
+
+                var policy = CreateAsyncPolicy(method);
+
+                Task<object> resultTask;
+
+                if (fallbackAttr != null)
+                {
+                    var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
+                    var fallbackPolicy = policy.WrapAsync(
+                        Policy<object>.Handle<Exception>()
+                            .FallbackAsync(() =>
+                            {
+                                var fallbackResult = fallbackMethod.Invoke(_decorated, args);
+                                LogAuditOutput(method, fallbackResult); // 📤 Salida desde fallback
+                                return Task.FromResult(fallbackResult);
+                            })
+                    );
+
+                    resultTask = fallbackPolicy.ExecuteAsync(func);
+                }
+                else
+                {
+                    resultTask = policy.ExecuteAsync(func);
+                }
+
+                StopTimerAndLogIfNeeded(method, sw);
+                return resultTask;
+            }
+            catch (Exception ex)
+            {
+                LogAuditError(method, ex); // ⚠️ Error
+                _logger.LogError(ex, "❌ Error en método async<T>: {Method} - Contexto: {Contexto}", method.Name, contexto);
+                throw;
+            }
+        }
+
+        private MethodInfo GetFallbackMethod(MethodInfo originalMethod, string fallbackMethodName)
+        {
+            var fallbackMethod = _decorated.GetType()
+                .GetMethod(fallbackMethodName, originalMethod.GetParameters().Select(p => p.ParameterType).ToArray());
+
+            if (fallbackMethod == null)
+                throw new InvalidOperationException($"⚠️ Método fallback '{fallbackMethodName}' no encontrado con la misma firma que '{originalMethod.Name}'.");
+
+            return fallbackMethod;
+        }
+
+        private string GenerateCacheKey(MethodInfo method, object[] args)
+        {
+            var methodName = $"{typeof(T).FullName}.{method.Name}";
+            var parameters = string.Join("_", args.Select(a => a?.ToString() ?? "<null>"));
+            return $"{methodName}_{parameters}";
         }
 
         private object HandleAsync(MethodInfo method, object[] args, string contexto)
@@ -45,103 +182,61 @@ namespace Interceptor.AOP.Interceptors
             throw new InvalidOperationException("Tipo async no soportado.");
         }
 
-        private async Task InvokeTaskMethodAsync(MethodInfo method, object[] args, string contexto)
-        {
-            try
-            {
-                ApplyValidation(method, args);
-                var sw = StartTimerIfNeeded(method);
-
-                var retryAttr = method.GetCustomAttribute<RetryAttribute>();
-
-                if (_options.EnableRetries && retryAttr != null)
-                {
-                    await Policy
-                        .Handle<Exception>()
-                        .RetryAsync(retryAttr.Attempts)
-                        .ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
-                }
-                else
-                {
-                    await (Task)method.Invoke(_decorated, args);
-                }
-
-                StopTimerAndLogIfNeeded(method, sw);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Error en método async: {Method} - Contexto: {Contexto}", method.Name, contexto);
-                throw;
-            }
-        }
-
-        private object InvokeGenericTaskMethodAsync(MethodInfo method, object[] args, string contexto)
-        {
-            try
-            {
-                ApplyValidation(method, args);
-                var sw = StartTimerIfNeeded(method);
-
-                var retryAttr = method.GetCustomAttribute<RetryAttribute>();
-                var returnType = method.ReturnType.GetGenericArguments()[0];
-
-                var func = new Func<Task<object>>(async () =>
-                {
-                    var task = (Task)method.Invoke(_decorated, args);
-                    await task.ConfigureAwait(false);
-                    var resultProperty = task.GetType().GetProperty("Result");
-                    return resultProperty?.GetValue(task);
-                });
-
-                if (_options.EnableRetries && retryAttr != null)
-                {
-                    var policy = Policy
-                        .Handle<Exception>()
-                        .RetryAsync(retryAttr.Attempts);
-
-                    var wrappedTask = policy.ExecuteAsync(func);
-                    StopTimerAndLogIfNeeded(method, sw);
-                    return wrappedTask;
-                }
-
-                var original = func();
-                StopTimerAndLogIfNeeded(method, sw);
-                return original;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Error en método async<T>: {Method} - Contexto: {Contexto}", method.Name, contexto);
-                throw;
-            }
-        }
-
         private object HandleSync(MethodInfo method, object[] args, string contexto)
         {
             try
             {
                 ApplyValidation(method, args);
+
+                LogAuditInput(method, args);
+
                 var sw = StartTimerIfNeeded(method);
 
-                var retryAttr = method.GetCustomAttribute<RetryAttribute>();
-                object result;
-
-                if (_options.EnableRetries && retryAttr != null)
+                var cacheAttr = method.GetCustomAttribute<CacheAttribute>();
+                if (cacheAttr != null)
                 {
-                    result = Policy
-                        .Handle<Exception>()
-                        .Retry(retryAttr.Attempts)
-                        .Execute(() => method.Invoke(_decorated, args));
+                    var cacheKey = GenerateCacheKey(method, args);
+                    if (_memoryCache.TryGetValue(cacheKey, out var cached))
+                    {
+                        _logger.LogInformation("🔁 Cache HIT en {Method}", method.Name);
+                        return cached;
+                    }
+
+                    var result = method.Invoke(_decorated, args);
+                    _memoryCache.Set(cacheKey, result, TimeSpan.FromSeconds(cacheAttr.DurationSeconds));
+                    StopTimerAndLogIfNeeded(method, sw);
+                    return result;
+                }
+
+                var policy = CreateSyncPolicy(method);
+                var fallbackAttr = method.GetCustomAttribute<FallbackAttribute>();
+
+                object resultado;
+
+                if (fallbackAttr != null)
+                {
+                    var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
+                    var fallbackPolicy = policy.Wrap(
+                        Policy<object>.Handle<Exception>()
+                            .Fallback(() => fallbackMethod.Invoke(_decorated, args))
+                    );
+                    resultado = fallbackPolicy.Execute(() => method.Invoke(_decorated, args));
                 }
                 else
                 {
-                    result = method.Invoke(_decorated, args);
+                    resultado = policy.Execute(() => method.Invoke(_decorated, args));
                 }
 
                 StopTimerAndLogIfNeeded(method, sw);
-                return result;
+
+                LogAuditOutput(method, resultado);
+
+                return resultado;
             }
             catch (Exception ex)
             {
+                LogAuditError(method, ex);
+
                 _logger.LogError(ex, "❌ Error en método: {Method} - Contexto: {Contexto}", method.Name, contexto);
                 throw;
             }
@@ -173,6 +268,106 @@ namespace Interceptor.AOP.Interceptors
             {
                 sw.Stop();
                 _logger.LogInformation("⏱️ {Method} ejecutado en {Ms}ms", method.Name, sw.ElapsedMilliseconds);
+            }
+        }
+
+        private IAsyncPolicy CreateAsyncPolicy(MethodInfo method)
+        {
+            var retryAttr = method.GetCustomAttribute<RetryAttribute>();
+            var circuitAttr = method.GetCustomAttribute<CircuitBreakerAttribute>();
+
+            IAsyncPolicy policy = Policy.NoOpAsync();
+
+            if (_options.EnableRetries && retryAttr != null)
+            {
+                policy = policy.WrapAsync(
+                    //Policy.Handle<Exception>().RetryAsync(retryAttr.Attempts)
+
+                    Policy
+                    .Handle<Exception>()
+                    .RetryAsync(retryAttr.Attempts, onRetry: (exception, retryCount, context) =>
+                    {
+                        _logger.LogWarning("🔁 Reintento async #{RetryCount} en {Method} - Error: {Message}",
+                            retryCount, method.Name, exception.Message);
+                    })
+
+                );
+            }
+
+            if (circuitAttr != null)
+            {
+                policy = policy.WrapAsync(
+                    Policy
+                        .Handle<Exception>()
+                        .CircuitBreakerAsync(
+                            circuitAttr.ExceptionsAllowedBeforeBreaking,
+                            TimeSpan.FromSeconds(circuitAttr.DurationOfBreakSeconds)
+                        )
+                );
+            }
+
+            return policy;
+        }
+
+        private ISyncPolicy CreateSyncPolicy(MethodInfo method)
+        {
+            var retryAttr = method.GetCustomAttribute<RetryAttribute>();
+            var circuitAttr = method.GetCustomAttribute<CircuitBreakerAttribute>();
+
+            ISyncPolicy policy = Policy.NoOp();
+
+            if (_options.EnableRetries && retryAttr != null)
+            {
+                policy = policy.Wrap(
+                    //Policy.Handle<Exception>().Retry(retryAttr.Attempts)
+
+                    Policy
+                    .Handle<Exception>()
+                    .Retry(retryAttr.Attempts, onRetry: (exception, retryCount) =>
+                    {
+                        _logger.LogWarning("🔁 Reintento sync #{RetryCount} en {Method} - Error: {Message}",
+                            retryCount, method.Name, exception.Message);
+                    })
+
+                );
+            }
+
+            if (circuitAttr != null)
+            {
+                policy = policy.Wrap(
+                    Policy
+                        .Handle<Exception>()
+                        .CircuitBreaker(
+                            circuitAttr.ExceptionsAllowedBeforeBreaking,
+                            TimeSpan.FromSeconds(circuitAttr.DurationOfBreakSeconds)
+                        )
+                );
+            }
+
+            return policy;
+        }
+        private void LogAuditInput(MethodInfo method, object[] args)
+        {
+            if (method.GetCustomAttribute<AuditAttribute>() != null)
+            {
+                var argList = string.Join(", ", args.Select(a => a?.ToString() ?? "<null>"));
+                _logger.LogInformation("📥 Entrada en {Method}: {Args}", method.Name, argList);
+            }
+        }
+
+        private void LogAuditOutput(MethodInfo method, object result)
+        {
+            if (method.GetCustomAttribute<AuditAttribute>() != null)
+            {
+                _logger.LogInformation("📤 Salida de {Method}: {Result}", method.Name, result);
+            }
+        }
+
+        private void LogAuditError(MethodInfo method, Exception ex)
+        {
+            if (method.GetCustomAttribute<AuditAttribute>() != null)
+            {
+                _logger.LogError(ex, "⚠️ Error en {Method} (Auditable)", method.Name);
             }
         }
     }

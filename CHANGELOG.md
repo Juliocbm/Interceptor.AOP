@@ -1,13 +1,29 @@
 # Interceptor.AOP - Changelog
 
+## [1.1.1] - 2025-04-17
+
+### Added
+- Soporte para interrupción con `[CircuitBreaker]`.
+- Soporte de fallback alternativo con `[Fallback]` para métodos sync y async.
+- Auditoría con `[Audit]`: parámetros de entrada, salida, errores.
+- Contexto de error personalizado con `[HandleException]`.
+
+### Fixed
+- Compatibilidad con métodos `Task<T>` para obtener el resultado correctamente.
+
+---
+
 ## [1.1.0] - 2025-04-15
 
 ### Added
 - Soporte para métodos `Task` y `Task<T>` en el interceptor.
-- Integración con Polly para reintentos automáticos.
-- Validaciones automáticas utilizando `DataAnnotations`.
-- Medición de tiempo de ejecución con `Stopwatch`.
+- Integración con Polly para reintentos automáticos (`[Retry]`).
+- Validaciones automáticas utilizando `DataAnnotations` (`[Validate]`).
+- Medición de tiempo de ejecución con `Stopwatch` (`[MeasureTime]`).
 - Logging contextualizado con `ILogger<T>`.
 
 ### Changed
 - Refactorización del interceptor para mejorar la modularidad y extensibilidad.
+
+### Added
+- Log de cada intento de reintento `[Retry]` (tanto sync como async) con detalles de número de intento, método y mensaje de error.

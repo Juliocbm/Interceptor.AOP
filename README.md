@@ -1,29 +1,39 @@
 # 📦 Interceptor.AOP
 
-Una librería ligera y extensible para aplicar **Aspect-Oriented Programming (AOP)** en aplicaciones .NET mediante **interceptores de método automáticos** usando `DispatchProxy`.
+[![NuGet](https://img.shields.io/nuget/v/Interceptor.AOP.svg?style=flat-square)](https://www.nuget.org/packages/Interceptor.AOP/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/Interceptor.AOP.svg?style=flat-square)](https://www.nuget.org/packages/Interceptor.AOP/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+
+Una librería ligera y extensible para aplicar **Aspect-Oriented Programming (AOP)** en aplicaciones .NET, usando interceptores automáticos basados en `DispatchProxy`.
+
+Ideal para centralizar lógica transversal como **reintentos, validaciones, cacheo, auditoría, y manejo de errores** sin contaminar la lógica de negocio.
+
+---
 
 ## 🎯 Propósito
 
-Centralizar y estandarizar el manejo de lógica transversal como:
+Centralizar y estandarizar:
 
-- 🛡️ Manejo automático de excepciones
-- 📝 Logging estructurado con `ILogger<T>`
-- 🧠 Contextualización de errores usando atributos
-- 💡 Preparado para futuras extensiones (reintentos, métricas, validaciones, etc.)
+- 🛡️ Manejo de excepciones con contexto
+- 🔁 Reintentos y circuit breaker con Polly
+- 🧪 Validaciones automáticas con DataAnnotations
+- ⏱️ Medición de tiempo de ejecución
+- 🔐 Cacheo en memoria por método
+- 📝 Logging estructurado y auditoría completa
 
 ---
 
 ## 🚀 Características
 
-✔️ Intercepta automáticamente todos los métodos públicos de servicios registrados por interfaz  
-✔️ Captura excepciones sin necesidad de `try/catch` en cada método  
-✔️ Registra errores con la categoría de clase usando `ILogger<T>`  
-✔️ Compatible con `Serilog`, `Seq`, `Application Insights`, etc.  
-✔️ Opcional: usa el atributo `[HandleException("Contexto")]` para enriquecer los logs
+✔️ Soporte para métodos síncronos y asincrónicos (`Task`, `Task<T>`)  
+✔️ Decoración por atributos: fácil de aplicar, sin modificar código existente  
+✔️ Totalmente extensible: desacoplado y adaptable  
+✔️ Compatible con `ILogger<T>`, `IMemoryCache`, y Polly  
+✔️ Ideal para microservicios, APIs, backend robusto
 
 ---
 
-## 🧱 Cómo instalar
+## 🧱 Instalación
 
 Desde NuGet:
 

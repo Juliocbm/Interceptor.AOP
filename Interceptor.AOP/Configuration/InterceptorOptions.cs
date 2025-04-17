@@ -12,5 +12,4 @@ namespace Interceptor.AOP.Configuration
         public bool EnableValidation { get; set; } = true;
         public bool EnableTiming { get; set; } = true;
     }
-
 }
