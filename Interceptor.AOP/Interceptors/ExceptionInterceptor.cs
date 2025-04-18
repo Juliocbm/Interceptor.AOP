@@ -57,10 +57,21 @@ namespace Interceptor.AOP.Interceptors
                         .Handle<Exception>()
                         .FallbackAsync(async (ct) =>
                         {
-                            var fallbackResult = fallbackMethod.Invoke(_decorated, args);
-                            if (fallbackResult is Task fallbackTask)
-                                await fallbackTask.ConfigureAwait(false);
-                            LogAuditOutput(method, "<fallback void>"); // 📤 Salida desde fallback
+                            var fallbackReturn = fallbackMethod.Invoke(_decorated, args);
+
+                            object fallbackResult;
+                            if (fallbackReturn is Task task)
+                            {
+                                await task.ConfigureAwait(false);
+                                fallbackResult = fallbackReturn.GetType().GetProperty("Result")?.GetValue(fallbackReturn);
+                            }
+                            else
+                            {
+                                fallbackResult = fallbackReturn;
+                            }
+
+                            LogAuditOutput(method, fallbackResult);
+
                         });
 
                     var policyWrap = fallbackPolicy.WrapAsync(retryPolicy);  // 👈 invertido
@@ -74,12 +85,19 @@ namespace Interceptor.AOP.Interceptors
 
                 StopTimerAndLogIfNeeded(method, sw);
             }
+            catch (TargetInvocationException tie) when (tie.InnerException != null)
+            {
+                LogAuditError(method, tie.InnerException);
+                _logger.LogError(tie.InnerException, "❌ Error interno (unwrapped) en método async: {Method} - Contexto: {Contexto}", method.Name, contexto);
+                throw tie.InnerException;
+            }
             catch (Exception ex)
             {
-                LogAuditError(method, ex); // ⚠️ Error
+                LogAuditError(method, ex);
                 _logger.LogError(ex, "❌ Error en método async: {Method} - Contexto: {Contexto}", method.Name, contexto);
                 throw;
             }
+
         }
 
         private object InvokeGenericTaskMethodAsync(MethodInfo method, object[] args, string contexto)
@@ -87,8 +105,7 @@ namespace Interceptor.AOP.Interceptors
             try
             {
                 ApplyValidation(method, args);
-                LogAuditInput(method, args); // 📥 Entrada
-
+                LogAuditInput(method, args);
                 var sw = StartTimerIfNeeded(method);
 
                 var cacheAttr = method.GetCustomAttribute<CacheAttribute>();
@@ -98,27 +115,26 @@ namespace Interceptor.AOP.Interceptors
                 if (cacheAttr != null && _memoryCache.TryGetValue(cacheKey, out var cached))
                 {
                     _logger.LogInformation("🔁 Cache HIT async<T> en {Method}", method.Name);
-                    LogAuditOutput(method, cached); // 📤 Salida por cache
-                    return Task.FromResult(cached);
+                    LogAuditOutput(method, cached);
+                    return CreateTypedTaskResult(method, cached);
                 }
 
                 var func = new Func<Task<object>>(async () =>
                 {
                     var task = (Task)method.Invoke(_decorated, args);
                     await task.ConfigureAwait(false);
-
-                    var resultProperty = task.GetType().GetProperty("Result");
-                    var result = resultProperty?.GetValue(task);
+                    var result = task.GetType().GetProperty("Result")?.GetValue(task);
 
                     if (cacheAttr != null)
                         _memoryCache.Set(cacheKey, result, TimeSpan.FromSeconds(cacheAttr.DurationSeconds));
 
-                    LogAuditOutput(method, result); // 📤 Salida exitosa
-
+                    LogAuditOutput(method, result);
                     return result;
                 });
 
                 var retryPolicy = CreateAsyncPolicy(method);
+
+                Task<object> resultTask;
 
                 if (fallbackAttr != null)
                 {
@@ -126,33 +142,58 @@ namespace Interceptor.AOP.Interceptors
 
                     var fallbackPolicy = Policy<object>
                         .Handle<Exception>()
-                        .FallbackAsync(async (ct) =>
+                        .FallbackAsync(async ct =>
                         {
-                            var fallbackResult = fallbackMethod.Invoke(_decorated, args);
-                            LogAuditOutput(method, fallbackResult); // 📤 Salida desde fallback
+                            var fallbackReturn = fallbackMethod.Invoke(_decorated, args);
+
+                            object fallbackResult;
+                            if (fallbackReturn is Task task)
+                            {
+                                await task.ConfigureAwait(false);
+                                fallbackResult = fallbackReturn.GetType().GetProperty("Result")?.GetValue(fallbackReturn);
+                            }
+                            else
+                            {
+                                fallbackResult = fallbackReturn;
+                            }
+
+                            LogAuditOutput(method, fallbackResult);
                             return fallbackResult;
+
                         });
 
-                    var policyWrap = fallbackPolicy.WrapAsync(retryPolicy); // ✔️ retry antes que fallback
-                    var resultTask = policyWrap.ExecuteAsync(func);
-
-                    StopTimerAndLogIfNeeded(method, sw);
-                    return resultTask;
+                    resultTask = fallbackPolicy.WrapAsync(retryPolicy).ExecuteAsync(func);
                 }
                 else
                 {
-                    var resultTask = retryPolicy.ExecuteAsync(func);
-
-                    StopTimerAndLogIfNeeded(method, sw);
-                    return resultTask;
+                    resultTask = retryPolicy.ExecuteAsync(func);
                 }
+
+                StopTimerAndLogIfNeeded(method, sw);
+
+                return CreateTypedTaskResult(method, resultTask.Result);
+            }
+            catch (TargetInvocationException tie) when (tie.InnerException != null)
+            {
+                LogAuditError(method, tie.InnerException);
+                _logger.LogError(tie.InnerException, "❌ Error interno (unwrapped) en método sync: {Method} - Contexto: {Contexto}", method.Name, contexto);
+                throw tie.InnerException;
             }
             catch (Exception ex)
             {
-                LogAuditError(method, ex); // ⚠️ Error
-                _logger.LogError(ex, "❌ Error en método async<T>: {Method} - Contexto: {Contexto}", method.Name, contexto);
+                LogAuditError(method, ex);
+                _logger.LogError(ex, "❌ Error en método: {Method} - Contexto: {Contexto}", method.Name, contexto);
                 throw;
             }
+
+        }
+
+        private object CreateTypedTaskResult(MethodInfo method, object result)
+        {
+            var resultType = method.ReturnType.GenericTypeArguments[0];
+            var fromResultMethod = typeof(Task).GetMethod(nameof(Task.FromResult))!
+                .MakeGenericMethod(resultType);
+            return fromResultMethod.Invoke(null, new[] { result });
         }
 
         private MethodInfo GetFallbackMethod(MethodInfo originalMethod, string fallbackMethodName)
