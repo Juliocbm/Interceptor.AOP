@@ -6,6 +6,8 @@ using Polly;
 using Interceptor.AOP.Attributes;
 using Interceptor.AOP.Configuration;
 using Microsoft.Extensions.Caching.Memory;
+using Polly.Fallback;
+using Polly.Retry;
 
 namespace Interceptor.AOP.Interceptors
 {
@@ -35,7 +37,6 @@ namespace Interceptor.AOP.Interceptors
                 : HandleSync(method, args, contexto);
         }
 
-
         private async Task InvokeTaskMethodAsync(MethodInfo method, object[] args, string contexto)
         {
             try
@@ -45,28 +46,29 @@ namespace Interceptor.AOP.Interceptors
 
                 var sw = StartTimerIfNeeded(method);
 
-                var policy = CreateAsyncPolicy(method);
+                var retryPolicy = CreateAsyncPolicy(method);
                 var fallbackAttr = method.GetCustomAttribute<FallbackAttribute>();
 
                 if (fallbackAttr != null)
                 {
                     var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
-                    var fallbackPolicy = policy.WrapAsync(
-                        Policy.Handle<Exception>()
-                              .FallbackAsync(async ct =>
-                              {
-                                  var fallbackResult = fallbackMethod.Invoke(_decorated, args);
-                                  if (fallbackResult is Task fallbackTask)
-                                      await fallbackTask.ConfigureAwait(false);
-                                  LogAuditOutput(method, "<fallback void>"); // 📤 Salida desde fallback
-                              })
-                    );
 
-                    await fallbackPolicy.ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
+                    var fallbackPolicy = Policy
+                        .Handle<Exception>()
+                        .FallbackAsync(async (ct) =>
+                        {
+                            var fallbackResult = fallbackMethod.Invoke(_decorated, args);
+                            if (fallbackResult is Task fallbackTask)
+                                await fallbackTask.ConfigureAwait(false);
+                            LogAuditOutput(method, "<fallback void>"); // 📤 Salida desde fallback
+                        });
+
+                    var policyWrap = fallbackPolicy.WrapAsync(retryPolicy);  // 👈 invertido
+                    await policyWrap.ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
                 }
                 else
                 {
-                    await policy.ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
+                    await retryPolicy.ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
                     LogAuditOutput(method, "<void>"); // 📤 Salida normal
                 }
 
@@ -116,32 +118,34 @@ namespace Interceptor.AOP.Interceptors
                     return result;
                 });
 
-                var policy = CreateAsyncPolicy(method);
-
-                Task<object> resultTask;
+                var retryPolicy = CreateAsyncPolicy(method);
 
                 if (fallbackAttr != null)
                 {
                     var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
-                    var fallbackPolicy = policy.WrapAsync(
-                        Policy<object>.Handle<Exception>()
-                            .FallbackAsync(() =>
-                            {
-                                var fallbackResult = fallbackMethod.Invoke(_decorated, args);
-                                LogAuditOutput(method, fallbackResult); // 📤 Salida desde fallback
-                                return Task.FromResult(fallbackResult);
-                            })
-                    );
 
-                    resultTask = fallbackPolicy.ExecuteAsync(func);
+                    var fallbackPolicy = Policy<object>
+                        .Handle<Exception>()
+                        .FallbackAsync(async (ct) =>
+                        {
+                            var fallbackResult = fallbackMethod.Invoke(_decorated, args);
+                            LogAuditOutput(method, fallbackResult); // 📤 Salida desde fallback
+                            return fallbackResult;
+                        });
+
+                    var policyWrap = fallbackPolicy.WrapAsync(retryPolicy); // ✔️ retry antes que fallback
+                    var resultTask = policyWrap.ExecuteAsync(func);
+
+                    StopTimerAndLogIfNeeded(method, sw);
+                    return resultTask;
                 }
                 else
                 {
-                    resultTask = policy.ExecuteAsync(func);
-                }
+                    var resultTask = retryPolicy.ExecuteAsync(func);
 
-                StopTimerAndLogIfNeeded(method, sw);
-                return resultTask;
+                    StopTimerAndLogIfNeeded(method, sw);
+                    return resultTask;
+                }
             }
             catch (Exception ex)
             {
@@ -184,6 +188,7 @@ namespace Interceptor.AOP.Interceptors
 
         private object HandleSync(MethodInfo method, object[] args, string contexto)
         {
+
             try
             {
                 ApplyValidation(method, args);
@@ -208,7 +213,7 @@ namespace Interceptor.AOP.Interceptors
                     return result;
                 }
 
-                var policy = CreateSyncPolicy(method);
+                var retryPolicy = CreateSyncPolicy(method);
                 var fallbackAttr = method.GetCustomAttribute<FallbackAttribute>();
 
                 object resultado;
@@ -216,15 +221,17 @@ namespace Interceptor.AOP.Interceptors
                 if (fallbackAttr != null)
                 {
                     var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
-                    var fallbackPolicy = policy.Wrap(
-                        Policy<object>.Handle<Exception>()
-                            .Fallback(() => fallbackMethod.Invoke(_decorated, args))
-                    );
-                    resultado = fallbackPolicy.Execute(() => method.Invoke(_decorated, args));
+                    var fallbackPolicy = Policy<object>
+                        .Handle<Exception>()
+                        .Fallback(() => fallbackMethod.Invoke(_decorated, args));
+
+                    var policyWrap = fallbackPolicy.Wrap(retryPolicy); // ✔️ retry antes que fallback
+
+                    resultado = policyWrap.Execute(() => method.Invoke(_decorated, args));
                 }
                 else
                 {
-                    resultado = policy.Execute(() => method.Invoke(_decorated, args));
+                    resultado = retryPolicy.Execute(() => method.Invoke(_decorated, args));
                 }
 
                 StopTimerAndLogIfNeeded(method, sw);
@@ -346,6 +353,8 @@ namespace Interceptor.AOP.Interceptors
 
             return policy;
         }
+
+
         private void LogAuditInput(MethodInfo method, object[] args)
         {
             if (method.GetCustomAttribute<AuditAttribute>() != null)

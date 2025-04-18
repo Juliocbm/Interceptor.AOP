@@ -27,3 +27,11 @@
 
 ### Added
 - Log de cada intento de reintento `[Retry]` (tanto sync como async) con detalles de número de intento, método y mensaje de error.
+
+## [1.2.2] - 2025-04-17
+
+### Fixed
+- ✅ Corrección en el orden de ejecución de políticas `Retry` y `Fallback`. Ahora el fallback solo se ejecuta si todos los reintentos fallan.
+
+### Improved
+- 🛠️ Refactor en la combinación de políticas usando `WrapAsync()` y `Wrap()` para asegurar comportamiento predecible y consistente.
