@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Interceptor.AOP", "Intercep
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Interceptor.AOP.Tests", "Interceptor.AOP.Tests\Interceptor.AOP.Tests.csproj", "{663A9F04-3216-4D23-91D9-856717DAD8D7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Interceptor.AOP.AspNetCore", "Interceptor.AOP.AspNetCore\Interceptor.AOP.AspNetCore.csproj", "{A29894D7-75FB-442F-81E0-27685031A785}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{663A9F04-3216-4D23-91D9-856717DAD8D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{663A9F04-3216-4D23-91D9-856717DAD8D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{663A9F04-3216-4D23-91D9-856717DAD8D7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A29894D7-75FB-442F-81E0-27685031A785}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A29894D7-75FB-442F-81E0-27685031A785}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A29894D7-75FB-442F-81E0-27685031A785}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A29894D7-75FB-442F-81E0-27685031A785}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

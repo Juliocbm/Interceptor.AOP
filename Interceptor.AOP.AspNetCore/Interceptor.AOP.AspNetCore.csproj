@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<PackageId>Interceptor.AOP.AspNetCore</PackageId>
+		<Version>1.0.0</Version>
+		<Authors>TuNombre</Authors>
+		<Company>TuEmpresa</Company>
+		<Description>Integración ASP.NET Core para la librería Interceptor.AOP con soporte automático de interceptores AOP en servicios.</Description>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<RepositoryUrl>https://github.com/TuUsuario/Interceptor.AOP</RepositoryUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageTags>aop interceptors middleware aspnetcore polly</PackageTags>
+		<PackageIcon>config_35px.png</PackageIcon>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\..\..\..\Users\desarrollo2\OneDrive - H G Transportaciones SA De CV\Documentos\Documentacion\Recursos graficos\Iconos\config_35px.png">
+		  <Pack>True</Pack>
+		  <PackagePath>\</PackagePath>
+		</None>
+		<None Include="README.md" Pack="true" PackagePath="" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="CHANGELOG.md" Pack="true" PackagePath="" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Interceptor.AOP\Interceptor.AOP.csproj" />
+	</ItemGroup>
+
+</Project>
