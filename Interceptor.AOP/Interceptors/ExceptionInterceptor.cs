@@ -27,10 +27,14 @@ namespace Interceptor.AOP.Interceptors
         }
 
         protected override object Invoke(MethodInfo method, object[] args)
-        {    
+        {
             var returnType = method.ReturnType;
-            var isAsync = typeof(Task).IsAssignableFrom(returnType);
-            var contexto = method.GetCustomAttribute<HandleExceptionAttribute>()?.Contexto ?? method.Name;
+            var isAsync = typeof(Task).IsAssignableFrom(returnType); 
+
+            var contexto =
+                method.GetCustomAttribute<AuditAttribute>()?.Contexto ??
+                method.GetCustomAttribute<HandleExceptionAttribute>()?.Contexto ??
+                method.Name;
 
             return isAsync
                 ? HandleAsync(method, args, contexto)
@@ -88,13 +92,11 @@ namespace Interceptor.AOP.Interceptors
             catch (TargetInvocationException tie) when (tie.InnerException != null)
             {
                 LogAuditError(method, tie.InnerException);
-                _logger.LogError(tie.InnerException, "❌ Error interno (unwrapped) en método async: {Method} - Contexto: {Contexto}", method.Name, contexto);
                 throw tie.InnerException;
             }
             catch (Exception ex)
             {
                 LogAuditError(method, ex);
-                _logger.LogError(ex, "❌ Error en método async: {Method} - Contexto: {Contexto}", method.Name, contexto);
                 throw;
             }
 
@@ -176,13 +178,11 @@ namespace Interceptor.AOP.Interceptors
             catch (TargetInvocationException tie) when (tie.InnerException != null)
             {
                 LogAuditError(method, tie.InnerException);
-                _logger.LogError(tie.InnerException, "❌ Error interno (unwrapped) en método sync: {Method} - Contexto: {Contexto}", method.Name, contexto);
                 throw tie.InnerException;
             }
             catch (Exception ex)
             {
                 LogAuditError(method, ex);
-                _logger.LogError(ex, "❌ Error en método: {Method} - Contexto: {Contexto}", method.Name, contexto);
                 throw;
             }
 
@@ -284,8 +284,6 @@ namespace Interceptor.AOP.Interceptors
             catch (Exception ex)
             {
                 LogAuditError(method, ex);
-
-                _logger.LogError(ex, "❌ Error en método: {Method} - Contexto: {Contexto}", method.Name, contexto);
                 throw;
             }
         }
@@ -395,29 +393,37 @@ namespace Interceptor.AOP.Interceptors
             return policy;
         }
 
-
         private void LogAuditInput(MethodInfo method, object[] args)
         {
-            if (method.GetCustomAttribute<AuditAttribute>() != null)
+            var auditAttr = method.GetCustomAttribute<AuditAttribute>();
+
+            if (auditAttr?.LogInput == true)
             {
+                var contexto = auditAttr.Contexto ?? method.Name;
                 var argList = string.Join(", ", args.Select(a => a?.ToString() ?? "<null>"));
-                _logger.LogInformation("📥 Entrada en {Method}: {Args}", method.Name, argList);
+                _logger.LogInformation("📥 Entrada de método: {Method} - {Contexto}: {Args}", method.Name, contexto, argList);
             }
         }
 
         private void LogAuditOutput(MethodInfo method, object result)
         {
-            if (method.GetCustomAttribute<AuditAttribute>() != null)
+            var auditAttr = method.GetCustomAttribute<AuditAttribute>();
+
+            if (auditAttr?.LogOutput == true)
             {
-                _logger.LogInformation("📤 Salida de {Method}: {Result}", method.Name, result);
+                var contexto = auditAttr.Contexto ?? method.Name;
+                _logger.LogInformation("📤 Salida de método: {Method} - {Contexto}: {Result}", method.Name, contexto, result);
             }
         }
 
         private void LogAuditError(MethodInfo method, Exception ex)
         {
-            if (method.GetCustomAttribute<AuditAttribute>() != null)
+            var auditAttr = method.GetCustomAttribute<AuditAttribute>();
+
+            if (auditAttr?.LogError == true)
             {
-                _logger.LogError(ex, "⚠️ Error en {Method} (Auditable)", method.Name);
+                var contexto = auditAttr.Contexto ?? method.Name;
+                _logger.LogError(ex, "❌ Error en método: {Method} - Contexto: {Contexto}", method.Name, contexto);
             }
         }
     }
