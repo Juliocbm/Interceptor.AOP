@@ -5,7 +5,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<PackageId>Interceptor.AOP</PackageId>
-		<Version>1.3.8</Version>
+		<Version>1.3.11</Version>
 		<Authors>Julio Cesar Bautista Monsalvo</Authors>
 		<Company>JCBM</Company>
 		<Description>Librería para interceptar métodos con soporte para reintentos, validaciones y medición de tiempo.</Description>

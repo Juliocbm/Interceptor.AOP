@@ -60,7 +60,21 @@
 ### Added
 - 🧠 Parámetro `method.Name` en `[Audit]` para personalizar mas el log ademas del contexto funcional.
 
-## [2.0.1] - 2025-04-22
+## [1.3.8] - 2025-04-22
 
 ### Changed
 - Se documenta ejemplo de configuracion de Program.cs o Startup.cs en README.md
+
+## [1.3.9] - 2025-04-30
+
+### Changed
+- Se agrega log informativo cuando se ejecuta metodo fallback
+
+## [1.3.10] - 2025-04-30
+
+### Changed
+- Se agrega log informativo cuando se ejecuta metodo fallback en metodo handleAsync
+
+## [1.3.11] - 2025-04-30
+### Changed
+- Ajuste de README.md

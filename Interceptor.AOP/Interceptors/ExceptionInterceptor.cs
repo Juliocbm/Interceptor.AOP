@@ -61,6 +61,8 @@ namespace Interceptor.AOP.Interceptors
                         .Handle<Exception>()
                         .FallbackAsync(async (ct) =>
                         {
+                            _logger.LogWarning("🛟 Fallback ejecutado en método async: {Method}", method.Name); // <- Agregado
+
                             var fallbackReturn = fallbackMethod.Invoke(_decorated, args);
 
                             object fallbackResult;
@@ -146,6 +148,8 @@ namespace Interceptor.AOP.Interceptors
                         .Handle<Exception>()
                         .FallbackAsync(async ct =>
                         {
+                            _logger.LogWarning("🛟 Fallback ejecutado en método async genérico: {Method}", method.Name); // <- Agregado
+
                             var fallbackReturn = fallbackMethod.Invoke(_decorated, args);
 
                             object fallbackResult;
@@ -264,7 +268,11 @@ namespace Interceptor.AOP.Interceptors
                     var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
                     var fallbackPolicy = Policy<object>
                         .Handle<Exception>()
-                        .Fallback(() => fallbackMethod.Invoke(_decorated, args));
+                        .Fallback(() =>
+                         {
+                             _logger.LogWarning("🛟 Fallback ejecutado en método síncrono: {Method}", method.Name); // <- Agregado
+                             return fallbackMethod.Invoke(_decorated, args);
+                         });
 
                     var policyWrap = fallbackPolicy.Wrap(retryPolicy); // ✔️ retry antes que fallback
 
