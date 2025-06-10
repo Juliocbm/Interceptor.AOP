@@ -14,7 +14,10 @@ namespace Interceptor.AOP.Attributes
 
         public RetryAttribute(int attempts = 3, int delayMilliseconds = 0)
         {
-            Attempts = attempts;
+            if (attempts < 1)
+                throw new ArgumentOutOfRangeException(nameof(attempts));
+                
+            Attempts = attempts; 
             DelayMilliseconds = delayMilliseconds;
         }
     }

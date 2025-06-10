@@ -51,6 +51,13 @@ namespace Interceptor.AOP.Tests
             Assert.Equal(4, callCount); // 1 original + 3 reintentos
         }
 
+        [Fact]
+        public void RetryAttribute_ShouldThrow_OnInvalidAttempts()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => new RetryAttribute(0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new RetryAttribute(-1));
+        }
+
 
         [Fact]
         public async Task FallbackAttribute_ShouldExecuteFallback()
