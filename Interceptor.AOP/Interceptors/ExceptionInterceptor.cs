@@ -8,6 +8,7 @@ using Interceptor.AOP.Configuration;
 using Microsoft.Extensions.Caching.Memory;
 using Polly.Fallback;
 using Polly.Retry;
+using System.Linq;
 
 namespace Interceptor.AOP.Interceptors
 {
@@ -336,6 +337,16 @@ namespace Interceptor.AOP.Interceptors
             }
         }
 
+        private PolicyBuilder BuildExceptionPolicy(RetryAttribute retryAttr)
+        {
+            if (retryAttr.ExceptionTypes == null || retryAttr.ExceptionTypes.Length == 0)
+            {
+                return Policy.Handle<Exception>();
+            }
+
+            return Policy.Handle<Exception>(ex => retryAttr.ExceptionTypes.Any(t => t.IsInstanceOfType(ex)));
+        }
+
         private IAsyncPolicy CreateAsyncPolicy(MethodInfo method)
         {
             var retryAttr = method.GetCustomAttribute<RetryAttribute>();
@@ -347,11 +358,12 @@ namespace Interceptor.AOP.Interceptors
             {
                 AsyncRetryPolicy retryPolicy;
 
+                var builder = BuildExceptionPolicy(retryAttr);
+
                 if (retryAttr.DelayMilliseconds > 0)
                 {
                     var delay = TimeSpan.FromMilliseconds(retryAttr.DelayMilliseconds);
-                    retryPolicy = Policy
-                        .Handle<Exception>()
+                    retryPolicy = builder
                         .WaitAndRetryAsync(
                             retryAttr.Attempts,
                             _ => delay,
@@ -363,8 +375,7 @@ namespace Interceptor.AOP.Interceptors
                 }
                 else
                 {
-                    retryPolicy = Policy
-                        .Handle<Exception>()
+                    retryPolicy = builder
                         .RetryAsync(retryAttr.Attempts, onRetry: (exception, retryCount, context) =>
                         {
                             _logger.LogWarning("🔁 Reintento async #{RetryCount} en {Method} - Error: {Message}",
@@ -401,11 +412,12 @@ namespace Interceptor.AOP.Interceptors
             {
                 RetryPolicy retryPolicy;
 
+                var builder = BuildExceptionPolicy(retryAttr);
+
                 if (retryAttr.DelayMilliseconds > 0)
                 {
                     var delay = TimeSpan.FromMilliseconds(retryAttr.DelayMilliseconds);
-                    retryPolicy = Policy
-                        .Handle<Exception>()
+                    retryPolicy = builder
                         .WaitAndRetry(
                             retryAttr.Attempts,
                             _ => delay,
@@ -417,8 +429,7 @@ namespace Interceptor.AOP.Interceptors
                 }
                 else
                 {
-                    retryPolicy = Policy
-                        .Handle<Exception>()
+                    retryPolicy = builder
                         .Retry(retryAttr.Attempts, onRetry: (exception, retryCount) =>
                         {
                             _logger.LogWarning("🔁 Reintento sync #{RetryCount} en {Method} - Error: {Message}",

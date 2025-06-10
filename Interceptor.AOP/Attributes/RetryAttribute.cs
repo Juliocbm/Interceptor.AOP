@@ -11,6 +11,7 @@ namespace Interceptor.AOP.Attributes
     {
         public int Attempts { get; }
         public int DelayMilliseconds { get; }
+        public Type[]? ExceptionTypes { get; set; }
 
         public RetryAttribute(int attempts = 3, int delayMilliseconds = 0)
         {
