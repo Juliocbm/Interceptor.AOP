@@ -33,7 +33,6 @@ namespace Interceptor.AOP.Interceptors
 
             var contexto =
                 method.GetCustomAttribute<AuditAttribute>()?.Contexto ??
-                method.GetCustomAttribute<HandleExceptionAttribute>()?.Contexto ??
                 method.Name;
 
             return isAsync
