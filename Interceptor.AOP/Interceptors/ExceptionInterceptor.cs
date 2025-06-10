@@ -104,7 +104,7 @@ namespace Interceptor.AOP.Interceptors
 
         }
 
-        private object InvokeGenericTaskMethodAsync(MethodInfo method, object[] args, string contexto)
+        private async Task<object> InvokeGenericTaskMethodAsync(MethodInfo method, object[] args, string contexto)
         {
             try
             {
@@ -175,9 +175,11 @@ namespace Interceptor.AOP.Interceptors
                     resultTask = retryPolicy.ExecuteAsync(func);
                 }
 
+                var result = await resultTask.ConfigureAwait(false);
+
                 StopTimerAndLogIfNeeded(method, sw);
 
-                return CreateTypedTaskResult(method, resultTask.Result);
+                return CreateTypedTaskResult(method, result);
             }
             catch (TargetInvocationException tie) when (tie.InnerException != null)
             {
@@ -226,7 +228,7 @@ namespace Interceptor.AOP.Interceptors
                 return InvokeTaskMethodAsync(method, args, contexto);
 
             if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
-                return InvokeGenericTaskMethodAsync(method, args, contexto);
+                return InvokeGenericTaskMethodAsync(method, args, contexto).GetAwaiter().GetResult();
 
             throw new InvalidOperationException("Tipo async no soportado.");
         }
