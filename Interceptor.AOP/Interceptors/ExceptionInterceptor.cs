@@ -345,18 +345,34 @@ namespace Interceptor.AOP.Interceptors
 
             if (_options.EnableRetries && retryAttr != null)
             {
-                policy = policy.WrapAsync(
-                    //Policy.Handle<Exception>().RetryAsync(retryAttr.Attempts)
+                AsyncRetryPolicy retryPolicy;
 
-                    Policy
-                    .Handle<Exception>()
-                    .RetryAsync(retryAttr.Attempts, onRetry: (exception, retryCount, context) =>
-                    {
-                        _logger.LogWarning("🔁 Reintento async #{RetryCount} en {Method} - Error: {Message}",
-                            retryCount, method.Name, exception.Message);
-                    })
+                if (retryAttr.DelayMilliseconds > 0)
+                {
+                    var delay = TimeSpan.FromMilliseconds(retryAttr.DelayMilliseconds);
+                    retryPolicy = Policy
+                        .Handle<Exception>()
+                        .WaitAndRetryAsync(
+                            retryAttr.Attempts,
+                            _ => delay,
+                            (exception, timeSpan, retryCount, context) =>
+                            {
+                                _logger.LogWarning("🔁 Reintento async #{RetryCount} en {Method} - Error: {Message}",
+                                    retryCount, method.Name, exception.Message);
+                            });
+                }
+                else
+                {
+                    retryPolicy = Policy
+                        .Handle<Exception>()
+                        .RetryAsync(retryAttr.Attempts, onRetry: (exception, retryCount, context) =>
+                        {
+                            _logger.LogWarning("🔁 Reintento async #{RetryCount} en {Method} - Error: {Message}",
+                                retryCount, method.Name, exception.Message);
+                        });
+                }
 
-                );
+                policy = policy.WrapAsync(retryPolicy);
             }
 
             if (circuitAttr != null)
@@ -383,18 +399,34 @@ namespace Interceptor.AOP.Interceptors
 
             if (_options.EnableRetries && retryAttr != null)
             {
-                policy = policy.Wrap(
-                    //Policy.Handle<Exception>().Retry(retryAttr.Attempts)
+                RetryPolicy retryPolicy;
 
-                    Policy
-                    .Handle<Exception>()
-                    .Retry(retryAttr.Attempts, onRetry: (exception, retryCount) =>
-                    {
-                        _logger.LogWarning("🔁 Reintento sync #{RetryCount} en {Method} - Error: {Message}",
-                            retryCount, method.Name, exception.Message);
-                    })
+                if (retryAttr.DelayMilliseconds > 0)
+                {
+                    var delay = TimeSpan.FromMilliseconds(retryAttr.DelayMilliseconds);
+                    retryPolicy = Policy
+                        .Handle<Exception>()
+                        .WaitAndRetry(
+                            retryAttr.Attempts,
+                            _ => delay,
+                            (exception, timeSpan, retryCount, context) =>
+                            {
+                                _logger.LogWarning("🔁 Reintento sync #{RetryCount} en {Method} - Error: {Message}",
+                                    retryCount, method.Name, exception.Message);
+                            });
+                }
+                else
+                {
+                    retryPolicy = Policy
+                        .Handle<Exception>()
+                        .Retry(retryAttr.Attempts, onRetry: (exception, retryCount) =>
+                        {
+                            _logger.LogWarning("🔁 Reintento sync #{RetryCount} en {Method} - Error: {Message}",
+                                retryCount, method.Name, exception.Message);
+                        });
+                }
 
-                );
+                policy = policy.Wrap(retryPolicy);
             }
 
             if (circuitAttr != null)
