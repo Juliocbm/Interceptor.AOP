@@ -47,7 +47,7 @@ Ideal para centralizar lógica transversal como **reintentos, validaciones, cach
 ```
 ## 🧩 Configuración manual (ProxyFactory)
 
-### Ejemplo de uconfiguración en Program.cs o Startup.cs
+### Ejemplo de configuración en Program.cs o Startup.cs
 ```csharp
 services.AddSingleton(provider =>
 {
