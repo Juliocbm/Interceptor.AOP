@@ -81,7 +81,11 @@ namespace Interceptor.AOP.Interceptors
 
                             LogAuditOutput(method, fallbackResult);
 
-                            }, async ex => { capturedException = ex; });
+                            }, async ex => {
+                                capturedException = ex is TargetInvocationException tie && tie.InnerException != null
+                                    ? tie.InnerException
+                                    : ex;
+                            });
 
                     var policyWrap = fallbackPolicy.WrapAsync(retryPolicy);  // 👈 invertido
                     await policyWrap.ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
@@ -175,7 +179,12 @@ namespace Interceptor.AOP.Interceptors
                                 LogAuditOutput(method, fallbackResult);
                                 return fallbackResult;
 
-                            }, async (delegateResult, context) => { capturedException = delegateResult.Exception!; });
+                            }, async (delegateResult, context) => {
+                                var ex = delegateResult.Exception!;
+                                capturedException = ex is TargetInvocationException tie && tie.InnerException != null
+                                    ? tie.InnerException
+                                    : ex;
+                            });
 
                         resultTask = fallbackPolicy.WrapAsync(retryPolicy).ExecuteAsync(func);
                     }
@@ -306,7 +315,13 @@ namespace Interceptor.AOP.Interceptors
                              var invokeArgs = expectsException ? args.Concat(new object[] { capturedException }).ToArray() : args;
                              return fallbackMethod.Invoke(_decorated, invokeArgs);
                          },
-                         onFallback: (delegateResult, context) => { capturedException = delegateResult.Exception!; });
+                         onFallback: (delegateResult, context) =>
+                         {
+                             var ex = delegateResult.Exception!;
+                             capturedException = ex is TargetInvocationException tie && tie.InnerException != null
+                                 ? tie.InnerException
+                                 : ex;
+                         });
 
                     var policyWrap = fallbackPolicy.Wrap(retryPolicy); // ✔️ retry antes que fallback
 
