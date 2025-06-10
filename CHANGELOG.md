@@ -78,3 +78,9 @@
 ## [1.3.11] - 2025-04-30
 ### Changed
 - Ajuste de README.md
+
+## [1.3.12] - 2025-06-10
+
+### Removed
+- Eliminado completamente el archivo `HandleExceptionAttribute` y su referencia
+  en el interceptor principal.
