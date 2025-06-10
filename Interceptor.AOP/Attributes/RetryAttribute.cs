@@ -10,6 +10,12 @@ namespace Interceptor.AOP.Attributes
     public class RetryAttribute : Attribute
     {
         public int Attempts { get; }
-        public RetryAttribute(int attempts = 3) => Attempts = attempts;
+        public int DelayMilliseconds { get; }
+
+        public RetryAttribute(int attempts = 3, int delayMilliseconds = 0)
+        {
+            Attempts = attempts;
+            DelayMilliseconds = delayMilliseconds;
+        }
     }
 }

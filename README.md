@@ -75,7 +75,7 @@ services.AddSingleton(provider =>
 public interface IProcesarDatosService
 {
     [Audit("ProcesarArchivo", LogInput = true)]
-    [Retry(3)]
+    [Retry(3, 200)]
     [Fallback("FallbackProcesarArchivo")]
     [MeasureTime]
     [Validate]
@@ -117,7 +117,7 @@ public class ProcesarDatosService : IProcesarDatosService
 || Decorador | Description                |
 |:--------| :-------- | :------------------------- |
 |📝| `[Audit]` | Auditoría flexible: entrada, salida y manejo de excepciones con contexto |
-|🔁| `[Retry(n)]` | Reintenta el método n veces si lanza excepción |
+|🔁| `[Retry(n, delayMs)]` | Reintenta el método n veces (opcional espera entre intentos en milisegundos) |
 |🛡️| `[Fallback("...")]` | Llama a otro método si el actual falla |
 |⏱️| `[MeasureTime]` | Logea cuánto tarda la ejecución del método |
 |🧪| `[Validate]` | Validaciones automáticas con DataAnnotations |
@@ -160,16 +160,16 @@ public void ProcesarArchivo(string path) { ... }
 [Audit(LogInput = false, LogOutput = true, LogError = false)] // Solo salida
 ```
 
-## 🔁 [Retry(n)] - Reintentos automáticos
+## 🔁 [Retry(n, delayMs)] - Reintentos automáticos
 
 Permite reintentar un método si lanza una excepción.
 
 ```csharp
-[Retry(3)]
+[Retry(3, 200)]
 public void ProcesarArchivo() { ... }
 ```
 
-➡️ Reintenta hasta 3 veces antes de fallar.
+➡️ Reintenta hasta 3 veces antes de fallar. Con `delayMs` > 0 espera ese tiempo entre intentos.
 
 Ideal cuando interactuás con servicios externos, bases de datos o archivos inestables.
 ## 🛑 [Fallback("MetodoAlternativo")] - Método alternativo en caso de error
