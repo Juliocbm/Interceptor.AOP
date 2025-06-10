@@ -41,7 +41,7 @@ Complemento para [`Interceptor.AOP`](https://www.nuget.org/packages/Interceptor.
 ```
 ## 🧩 Configuración con DI
 
-### Ejemplo de uconfiguración en Program.cs o Startup.cs
+### Ejemplo de configuración en Program.cs o Startup.cs
 ```csharp
 services.AddInterceptedTransient<IProcesarDatosService, ProcesarDatosService>();
 ```
