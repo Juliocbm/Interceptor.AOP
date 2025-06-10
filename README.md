@@ -117,7 +117,7 @@ public class ProcesarDatosService : IProcesarDatosService
 || Decorador | Description                |
 |:--------| :-------- | :------------------------- |
 |📝| `[Audit]` | Auditoría flexible: entrada, salida y manejo de excepciones con contexto |
-|🔁| `[Retry(n, delayMs)]` | Reintenta el método n veces (opcional espera entre intentos en milisegundos) |
+|🔁| `[Retry(n, delayMs)]` | Reintenta el método n veces (opcional espera entre intentos en milisegundos y filtrado por tipos de excepción) |
 |🛡️| `[Fallback("...")]` | Llama a otro método si el actual falla |
 |⏱️| `[MeasureTime]` | Logea cuánto tarda la ejecución del método |
 |🧪| `[Validate]` | Validaciones automáticas con DataAnnotations |
@@ -170,6 +170,15 @@ public void ProcesarArchivo() { ... }
 ```
 
 ➡️ Reintenta hasta 3 veces antes de fallar. Con `delayMs` > 0 espera ese tiempo entre intentos.
+
+También podés indicar qué tipos de excepción disparan el reintento:
+
+```csharp
+[Retry(3, ExceptionTypes = new[] { typeof(HttpRequestException) })]
+public void LlamarApi() { ... }
+```
+
+En este caso solo se reintenta si se lanza `HttpRequestException`.
 
 Ideal cuando interactuás con servicios externos, bases de datos o archivos inestables.
 ## 🛑 [Fallback("MetodoAlternativo")] - Método alternativo en caso de error
