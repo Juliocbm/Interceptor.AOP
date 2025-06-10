@@ -10,6 +10,13 @@ namespace Interceptor.AOP.Attributes
     public class RetryAttribute : Attribute
     {
         public int Attempts { get; }
-        public RetryAttribute(int attempts = 3) => Attempts = attempts;
+
+        public RetryAttribute(int attempts = 3)
+        {
+            if (attempts < 1)
+                throw new ArgumentOutOfRangeException(nameof(attempts));
+
+            Attempts = attempts;
+        }
     }
 }
