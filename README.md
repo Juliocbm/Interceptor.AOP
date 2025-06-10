@@ -82,7 +82,8 @@ public interface IProcesarDatosService
     [Cache(60)]
     int ProcesarArchivo(int number);
 
-    int FallbackProcesarArchivo(int number);
+    // El método fallback puede opcionalmente recibir la excepción lanzada
+    int FallbackProcesarArchivo(int number, Exception? ex = null);
 }
 ```
 
@@ -104,9 +105,9 @@ public class ProcesarDatosService : IProcesarDatosService
         return number * 10;
     }
 
-    public int FallbackProcesarArchivo(int number)
+    public int FallbackProcesarArchivo(int number, Exception? ex = null)
     {
-        _logger.LogWarning("⚠️ Fallback ejecutado para {number}", number);
+        _logger.LogWarning("⚠️ Fallback ejecutado para {number}. Excepcion: {ex}", number, ex?.Message);
         return -1;
     }
 }
@@ -189,9 +190,9 @@ Define un método de respaldo si el original lanza excepción después de los re
 [Fallback("ProcesarArchivoFallback")]
 public void ProcesarArchivo() { ... }
 
-public void ProcesarArchivoFallback() { ... }
+public void ProcesarArchivoFallback(Exception ex) { ... }
 ```
-➡️ Si ProcesarArchivo() falla, se ejecuta ProcesarArchivoFallback() automáticamente.
+➡️ Si ProcesarArchivo() falla, se ejecuta ProcesarArchivoFallback() automáticamente y recibe la excepción lanzada.
 ## ⏱️ [MeasureTime] - Medición de rendimiento
 
 Registra cuánto tarda en ejecutarse un método.

@@ -70,6 +70,23 @@ namespace Interceptor.AOP.Tests
         }
 
         [Fact]
+        public async Task FallbackAttribute_ShouldPassExceptionToFallback()
+        {
+            var ex = new Exception("FailX");
+            Exception received = null!;
+
+            _mockService.Setup(s => s.WithFallbackException()).Throws(ex);
+            _mockService.Setup(s => s.FallbackMethodWithException(It.IsAny<Exception>()))
+                .Callback<Exception>(e => received = e)
+                .ReturnsAsync("fb");
+
+            var result = await _interceptor.WithFallbackException();
+
+            Assert.Equal("fb", result);
+            Assert.Equal(ex, received);
+        }
+
+        [Fact]
         public async Task CacheAttribute_ShouldUseCachedValue()
         {
             string cacheValue = "cached";

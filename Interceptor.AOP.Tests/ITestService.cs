@@ -18,6 +18,11 @@ namespace Interceptor.AOP.Tests
 
         Task<string> FallbackMethod();
 
+        [Fallback("FallbackMethodWithException")]
+        Task<string> WithFallbackException();
+
+        Task<string> FallbackMethodWithException(Exception ex);
+
         [Cache(60)]
         Task<string> WithCache();
 
