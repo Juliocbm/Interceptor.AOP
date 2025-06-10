@@ -56,14 +56,17 @@ namespace Interceptor.AOP.Interceptors
                 if (fallbackAttr != null)
                 {
                     var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
+                    var expectsException = fallbackMethod.GetParameters().Length == args.Length + 1;
+                    Exception capturedException = null!;
 
-                    var fallbackPolicy = Policy
-                        .Handle<Exception>()
-                        .FallbackAsync(async (ct) =>
-                        {
-                            _logger.LogWarning("🛟 Fallback ejecutado en método async: {Method}", method.Name); // <- Agregado
+                        var fallbackPolicy = Policy
+                            .Handle<Exception>()
+                            .FallbackAsync(async (ct) =>
+                            {
+                                _logger.LogWarning("🛟 Fallback ejecutado en método async: {Method}", method.Name);
 
-                            var fallbackReturn = fallbackMethod.Invoke(_decorated, args);
+                            var invokeArgs = expectsException ? args.Concat(new object[] { capturedException }).ToArray() : args;
+                            var fallbackReturn = fallbackMethod.Invoke(_decorated, invokeArgs);
 
                             object fallbackResult;
                             if (fallbackReturn is Task task)
@@ -78,7 +81,7 @@ namespace Interceptor.AOP.Interceptors
 
                             LogAuditOutput(method, fallbackResult);
 
-                        });
+                            }, async ex => { capturedException = ex; });
 
                     var policyWrap = fallbackPolicy.WrapAsync(retryPolicy);  // 👈 invertido
                     await policyWrap.ExecuteAsync(() => (Task)method.Invoke(_decorated, args));
@@ -146,14 +149,17 @@ namespace Interceptor.AOP.Interceptors
                     if (fallbackAttr != null)
                     {
                         var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
+                        var expectsException = fallbackMethod.GetParameters().Length == args.Length + 1;
+                        Exception capturedException = null!;
 
                         var fallbackPolicy = Policy<object>
                             .Handle<Exception>()
-                            .FallbackAsync(async ct =>
+                            .FallbackAsync(async (delegateResult, context, ct) =>
                             {
-                                _logger.LogWarning("🛟 Fallback ejecutado en método async genérico: {Method}", method.Name); // <- Agregado
+                                _logger.LogWarning("🛟 Fallback ejecutado en método async genérico: {Method}", method.Name);
 
-                                var fallbackReturn = fallbackMethod.Invoke(_decorated, args);
+                                var invokeArgs = expectsException ? args.Concat(new object[] { capturedException }).ToArray() : args;
+                                var fallbackReturn = fallbackMethod.Invoke(_decorated, invokeArgs);
 
                                 object fallbackResult;
                                 if (fallbackReturn is Task task)
@@ -169,7 +175,7 @@ namespace Interceptor.AOP.Interceptors
                                 LogAuditOutput(method, fallbackResult);
                                 return fallbackResult;
 
-                            });
+                            }, async (delegateResult, context) => { capturedException = delegateResult.Exception!; });
 
                         resultTask = fallbackPolicy.WrapAsync(retryPolicy).ExecuteAsync(func);
                     }
@@ -214,8 +220,18 @@ namespace Interceptor.AOP.Interceptors
 
         private MethodInfo GetFallbackMethod(MethodInfo originalMethod, string fallbackMethodName)
         {
-            var fallbackMethod = _decorated.GetType()
-                .GetMethod(fallbackMethodName, originalMethod.GetParameters().Select(p => p.ParameterType).ToArray());
+            var originalParams = originalMethod.GetParameters().Select(p => p.ParameterType).ToList();
+
+            var decoratedType = _decorated.GetType();
+
+            var fallbackMethod = decoratedType.GetMethod(fallbackMethodName, originalParams.ToArray());
+
+            if (fallbackMethod == null)
+            {
+                // Try with an extra Exception parameter at the end
+                originalParams.Add(typeof(Exception));
+                fallbackMethod = decoratedType.GetMethod(fallbackMethodName, originalParams.ToArray());
+            }
 
             if (fallbackMethod == null)
                 throw new InvalidOperationException($"⚠️ Método fallback '{fallbackMethodName}' no encontrado con la misma firma que '{originalMethod.Name}'.");
@@ -278,13 +294,19 @@ namespace Interceptor.AOP.Interceptors
                 if (fallbackAttr != null)
                 {
                     var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
+
+                    var expectsException = fallbackMethod.GetParameters().Length == args.Length + 1;
+                    Exception capturedException = null!;
+
                     var fallbackPolicy = Policy<object>
                         .Handle<Exception>()
                         .Fallback(() =>
                          {
-                             _logger.LogWarning("🛟 Fallback ejecutado en método síncrono: {Method}", method.Name); // <- Agregado
-                             return fallbackMethod.Invoke(_decorated, args);
-                         });
+                             _logger.LogWarning("🛟 Fallback ejecutado en método síncrono: {Method}", method.Name);
+                             var invokeArgs = expectsException ? args.Concat(new object[] { capturedException }).ToArray() : args;
+                             return fallbackMethod.Invoke(_decorated, invokeArgs);
+                         },
+                         onFallback: (delegateResult, context) => { capturedException = delegateResult.Exception!; });
 
                     var policyWrap = fallbackPolicy.Wrap(retryPolicy); // ✔️ retry antes que fallback
 
