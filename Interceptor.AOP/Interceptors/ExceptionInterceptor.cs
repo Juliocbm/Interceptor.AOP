@@ -104,93 +104,103 @@ namespace Interceptor.AOP.Interceptors
 
         }
 
-        private async Task<object> InvokeGenericTaskMethodAsync(MethodInfo method, object[] args, string contexto)
+        private Task InvokeGenericTaskMethodAsync(MethodInfo method, object[] args, string contexto)
         {
-            try
+            async Task<object> ExecuteAsync()
             {
-                ApplyValidation(method, args);
-                LogAuditInput(method, args);
-                var sw = StartTimerIfNeeded(method);
-
-                var cacheAttr = method.GetCustomAttribute<CacheAttribute>();
-                var fallbackAttr = method.GetCustomAttribute<FallbackAttribute>();
-                var cacheKey = cacheAttr != null ? GenerateCacheKey(method, args) : null;
-
-                if (cacheAttr != null && _memoryCache.TryGetValue(cacheKey, out var cached))
+                try
                 {
-                    _logger.LogInformation("🔁 Cache HIT async<T> en {Method}", method.Name);
-                    LogAuditOutput(method, cached);
-                    return CreateTypedTaskResult(method, cached);
-                }
+                    ApplyValidation(method, args);
+                    LogAuditInput(method, args);
+                    var sw = StartTimerIfNeeded(method);
 
-                var func = new Func<Task<object>>(async () =>
-                {
-                    var task = (Task)method.Invoke(_decorated, args);
-                    await task.ConfigureAwait(false);
-                    var result = task.GetType().GetProperty("Result")?.GetValue(task);
+                    var cacheAttr = method.GetCustomAttribute<CacheAttribute>();
+                    var fallbackAttr = method.GetCustomAttribute<FallbackAttribute>();
+                    var cacheKey = cacheAttr != null ? GenerateCacheKey(method, args) : null;
 
-                    if (cacheAttr != null)
-                        _memoryCache.Set(cacheKey, result, TimeSpan.FromSeconds(cacheAttr.DurationSeconds));
+                    if (cacheAttr != null && _memoryCache.TryGetValue(cacheKey, out var cached))
+                    {
+                        _logger.LogInformation("🔁 Cache HIT async<T> en {Method}", method.Name);
+                        LogAuditOutput(method, cached);
+                        StopTimerAndLogIfNeeded(method, sw);
+                        return cached;
+                    }
 
-                    LogAuditOutput(method, result);
+                    var func = new Func<Task<object>>(async () =>
+                    {
+                        var task = (Task)method.Invoke(_decorated, args);
+                        await task.ConfigureAwait(false);
+                        var result = task.GetType().GetProperty("Result")?.GetValue(task);
+
+                        if (cacheAttr != null)
+                            _memoryCache.Set(cacheKey, result, TimeSpan.FromSeconds(cacheAttr.DurationSeconds));
+
+                        LogAuditOutput(method, result);
+                        return result;
+                    });
+
+                    var retryPolicy = CreateAsyncPolicy(method);
+
+                    Task<object> resultTask;
+
+                    if (fallbackAttr != null)
+                    {
+                        var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
+
+                        var fallbackPolicy = Policy<object>
+                            .Handle<Exception>()
+                            .FallbackAsync(async ct =>
+                            {
+                                _logger.LogWarning("🛟 Fallback ejecutado en método async genérico: {Method}", method.Name); // <- Agregado
+
+                                var fallbackReturn = fallbackMethod.Invoke(_decorated, args);
+
+                                object fallbackResult;
+                                if (fallbackReturn is Task task)
+                                {
+                                    await task.ConfigureAwait(false);
+                                    fallbackResult = fallbackReturn.GetType().GetProperty("Result")?.GetValue(fallbackReturn);
+                                }
+                                else
+                                {
+                                    fallbackResult = fallbackReturn;
+                                }
+
+                                LogAuditOutput(method, fallbackResult);
+                                return fallbackResult;
+
+                            });
+
+                        resultTask = fallbackPolicy.WrapAsync(retryPolicy).ExecuteAsync(func);
+                    }
+                    else
+                    {
+                        resultTask = retryPolicy.ExecuteAsync(func);
+                    }
+
+                    var result = await resultTask.ConfigureAwait(false);
+
+                    StopTimerAndLogIfNeeded(method, sw);
+
                     return result;
-                });
-
-                var retryPolicy = CreateAsyncPolicy(method);
-
-                Task<object> resultTask;
-
-                if (fallbackAttr != null)
-                {
-                    var fallbackMethod = GetFallbackMethod(method, fallbackAttr.FallbackMethodName);
-
-                    var fallbackPolicy = Policy<object>
-                        .Handle<Exception>()
-                        .FallbackAsync(async ct =>
-                        {
-                            _logger.LogWarning("🛟 Fallback ejecutado en método async genérico: {Method}", method.Name); // <- Agregado
-
-                            var fallbackReturn = fallbackMethod.Invoke(_decorated, args);
-
-                            object fallbackResult;
-                            if (fallbackReturn is Task task)
-                            {
-                                await task.ConfigureAwait(false);
-                                fallbackResult = fallbackReturn.GetType().GetProperty("Result")?.GetValue(fallbackReturn);
-                            }
-                            else
-                            {
-                                fallbackResult = fallbackReturn;
-                            }
-
-                            LogAuditOutput(method, fallbackResult);
-                            return fallbackResult;
-
-                        });
-
-                    resultTask = fallbackPolicy.WrapAsync(retryPolicy).ExecuteAsync(func);
                 }
-                else
+                catch (TargetInvocationException tie) when (tie.InnerException != null)
                 {
-                    resultTask = retryPolicy.ExecuteAsync(func);
+                    LogAuditError(method, tie.InnerException);
+                    throw tie.InnerException;
                 }
-
-                var result = await resultTask.ConfigureAwait(false);
-
-                StopTimerAndLogIfNeeded(method, sw);
-
-                return CreateTypedTaskResult(method, result);
+                catch (Exception ex)
+                {
+                    LogAuditError(method, ex);
+                    throw;
+                }
             }
-            catch (TargetInvocationException tie) when (tie.InnerException != null)
+
+            return ExecuteAsync().ContinueWith(t =>
             {
-                LogAuditError(method, tie.InnerException);
-                throw tie.InnerException;
-            }
-            catch (Exception ex)
-            {
-                LogAuditError(method, ex);
-                throw;
-            }
+                var result = t.GetAwaiter().GetResult();
+                return (Task)CreateTypedTaskResult(method, result);
+            }, TaskContinuationOptions.ExecuteSynchronously).Unwrap();
 
         }
 
@@ -228,7 +238,7 @@ namespace Interceptor.AOP.Interceptors
                 return InvokeTaskMethodAsync(method, args, contexto);
 
             if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
-                return InvokeGenericTaskMethodAsync(method, args, contexto).GetAwaiter().GetResult();
+                return InvokeGenericTaskMethodAsync(method, args, contexto);
 
             throw new InvalidOperationException("Tipo async no soportado.");
         }
